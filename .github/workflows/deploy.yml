@@ -162,7 +162,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Download the reviewed plan
-        uses: actions/download-artifact@v4 # PIN
+        uses: actions/download-artifact@v8 # PIN
         with:
           name: tfplan-${{ inputs.environment }}-${{ github.sha }}
           path: terraform/service
