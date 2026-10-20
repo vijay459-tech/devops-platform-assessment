@@ -7,9 +7,9 @@
 # Base images are build args so CI can pass digest-pinned references
 # (e.g. python@sha256:...) without editing this file. Tags below are the
 # readable defaults; Dependabot (docker ecosystem) proposes updates.
-# The Python minor versions must match: distroless python3-debian12 ships 3.11.
-ARG PYTHON_BUILD_IMAGE=python:3.11-slim-bookworm
-ARG RUNTIME_IMAGE=gcr.io/distroless/python3-debian12:latest-nonroot
+# Keep build and runtime Python versions compatible: distroless python3-debian13 ships Python 3.13.
+ARG PYTHON_BUILD_IMAGE=python:3.13-slim-trixie
+ARG RUNTIME_IMAGE=gcr.io/distroless/python3-debian13:nonroot
 
 FROM ${PYTHON_BUILD_IMAGE} AS build
 WORKDIR /src
