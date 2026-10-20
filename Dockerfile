@@ -9,7 +9,7 @@
 # readable defaults; Dependabot (docker ecosystem) proposes updates.
 # The Python minor versions must match: distroless python3-debian12 ships 3.11.
 ARG PYTHON_BUILD_IMAGE=python:3.11-slim-bookworm
-ARG RUNTIME_IMAGE=gcr.io/distroless/python3-debian12:nonroot
+ARG RUNTIME_IMAGE=gcr.io/distroless/python3-debian12:latest-nonroot
 
 FROM ${PYTHON_BUILD_IMAGE} AS build
 WORKDIR /src
