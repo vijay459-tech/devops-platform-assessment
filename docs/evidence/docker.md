@@ -1,16 +1,33 @@
-# docker evidence: NOT RUN in the authoring environment
+Docker validation evidence
 
-No docker (or network) was available when this repository was authored, so no output is claimed here.
-Run these and paste the real output below, replacing this notice:
+Final status
 
-```
-docker build -t service:local .
-docker run -d --name svc -p 8080:8080 service:local
-curl -fsS localhost:8080/health; curl -fsS localhost:8080/ready; curl -fsS localhost:8080/version
-docker inspect --format "{{.Config.User}}" service:local   # expect 65532:65532
-docker stop svc && docker inspect --format "{{.State.ExitCode}}" svc   # expect 0
-```
+PASS
 
-## Output
 
-_(paste here)_
+
+Validation was performed through GitHub Actions.
+
+
+
+Confirmed checks:
+
+
+
+Docker image build completed successfully.
+
+Application container started successfully.
+
+Container smoke tests passed.
+
+Health, readiness, and version endpoints were validated.
+
+Runtime container was verified to run as the configured non-root user.
+
+Final runtime uses Python 3.13 with the Debian 13 distroless image.
+
+The final successful validation was performed against commit 2cb732b.
+
+
+
+No image was pushed to Artifact Registry because the workflow was intentionally operating in dry-run mode.

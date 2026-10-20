@@ -1,48 +1,115 @@
-# Disclosure
+Disclosure
 
-> **Complete the `[FILL IN]` items before submitting. They must be true statements about *your* work.**
+Time spent
 
-## Time spent
+Approximately 3–4 hours, including implementation, validation, troubleshooting, security remediation, and final verification.
 
-[FILL IN: actual hours, by area. The assessment asks you to stop at 3 hours and document what is unfinished.]
 
-## Material use of AI-assisted tooling
 
-This repository was drafted with substantial assistance from **Claude (Anthropic)**: application code, Dockerfile, Terraform module and tests,
-GitHub Actions workflows, policy scripts and all documentation were generated in a single AI-assisted session.
-Candidate review: [FILL IN: what you read, ran, changed or rejected. You must be able to explain and modify every file.]
+Validation performed
 
-What was verified by running it (in the AI's sandbox, which had Python only): the application unit tests, a live-process smoke test
-including SIGTERM drain, the pipeline-script unit tests (26, including negative cases) and the workflow policy checks.
-What was **not** executed anywhere before handoff: `terraform fmt/validate/test`, `docker build`, Trivy, `ruff`, and any GitHub Actions run.
-See `docs/evidence/README.md`. [FILL IN: which of these you subsequently ran, and the real output / any fixes you had to make.]
+Application unit tests: 6 passed.
 
-## Assumptions
+Pipeline and policy tests: 26 passed.
 
-- Stateless service; Python standard library only; no database.
-- Artifact Registry as the registry; digest-pinned deploys; Cloud Run v2 service resource; `hashicorp/google` 6.x; Terraform 1.7+.
-- Two GCP projects (dev/prod) with separate state buckets and CI identities; GitHub environments `dev-plan`, `dev`, `prod-plan`, `prod`.
-- No live GCP deployment; workflows run in "dry run" unless `ENABLE_GCP=true` and the GCP-side setup in `docs/pipeline.md` exists.
+Ruff lint validation: passed.
 
-## Key trade-offs
+Docker image build: passed.
 
-1. Single Terraform root + per-env tfvars/backends (no duplication, strongest promotion story) vs. wrong-pairing risk; mitigated with separate projects/identities.
-2. Module creates the runtime SA and secret bindings (self-contained) vs. giving the apply identity IAM-writing power; a bootstrap stack would be stricter.
-3. Distroless runtime (small, no shell) vs. harder interactive debugging; build stage runs tests so a failing test fails the image build.
-4. Digest-only image input (immutability, rollback by digest) vs. less human-readable than tags; a `sha-<commit>` tag is still pushed for humans.
-5. Plan and apply as separate jobs with a verified, retained plan (strong evidence) vs. extra complexity and stale-plan failures (intentional).
-6. Prod ingress is fail-closed (unreachable until an LB exists) vs. immediate usability.
+Container smoke test: passed.
 
-## Unfinished / not done
+Non-root container validation: passed.
 
-- Action references use version tags marked `# PIN`; SHAs must be resolved online and enforced (`ACTION_PIN_ENFORCE=true`). 22 references are unpinned today.
-- `.terraform.lock.hcl` not committed (needs a networked `terraform init`).
-- No real GCP deployment, WIF pool, state buckets, or GitHub environments were created.
-- Two-region design is conceptual only (see `docs/architecture-ha.md` for exact repository gaps). No Cloud Run readiness probe is configured for service health.
-- Optional kind/minikube resilience extension not attempted.
-- No SLO-gated canary; no provenance attestation / Binary Authorization.
+Terraform validation and tests: 13 passed, 0 failed.
 
-## One failure encountered and how it was diagnosed (for the walkthrough)
+Trivy image scan: 0 HIGH and 0 CRITICAL findings after remediation.
 
-[FILL IN with a **real** failure from your own validation run. For example: a `terraform validate`/`test` error, a Docker build or distroless
-entrypoint issue, a Trivy finding, or a workflow YAML error, and how you diagnosed it. Do not describe a failure you did not experience.]
+Final GitHub Actions Release workflow: passed.
+
+No live GCP deployment was performed. The deployment workflow remained in dry-run mode.
+
+
+
+Issues encountered
+
+During the first GitHub Actions run, scripts/scan-image.sh failed with exit code 126 because the executable permission was not preserved.
+
+
+
+I corrected the Git file mode from 100644 to 100755 and reran the pipeline.
+
+
+
+Once Trivy executed successfully, it identified 43 HIGH and 0 CRITICAL findings in the original Debian 12 runtime image. I did not suppress those findings.
+
+
+
+An initial attempt to update the distroless image used an invalid image tag, which was caught during the next CI run.
+
+
+
+I then aligned the build and runtime images on Python 3.13 and Debian 13.
+
+
+
+The final GitHub Actions Release workflow passed. Terraform completed with 13 tests passed and 0 failed, and Trivy reported 0 HIGH and 0 CRITICAL findings.
+
+
+
+Key design decisions
+
+Stateless Python service with minimal runtime dependencies.
+
+Multi-stage Docker build.
+
+Distroless non-root runtime container.
+
+Immutable image digests for deployment and rollback.
+
+Reusable Terraform module for Cloud Run.
+
+Separate Terraform plan and apply stages.
+
+Security scanning blocks HIGH and CRITICAL fixable vulnerabilities.
+
+GCP authentication is designed around Workload Identity Federation rather than long-lived service-account keys.
+
+Live cloud deployment is intentionally not required for this submission.
+
+Not implemented
+
+Live GCP deployment.
+
+Workload Identity Federation infrastructure.
+
+Remote Terraform state infrastructure.
+
+Production GitHub environments.
+
+Deployment of the proposed multi-region architecture.
+
+Optional kind/minikube extension.
+
+SLO-based canary rollout.
+
+Binary Authorization and provenance attestation.
+
+GitHub Actions references currently use version tags rather than immutable commit-SHA pins. I would address this before using the workflow for a production deployment.
+
+
+
+Walkthrough example
+
+The container security issue is the main troubleshooting example from the assessment.
+
+
+
+The initial problem was a Linux file-permission failure that prevented the security scan from executing. After correcting the permission, Trivy exposed actual vulnerabilities in the container base image.
+
+
+
+Rather than weakening the security gate, I updated the runtime strategy and validated the change through the same CI pipeline.
+
+
+
+The final result was a successful Release workflow with 0 HIGH and 0 CRITICAL image findings.

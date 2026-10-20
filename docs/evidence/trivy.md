@@ -1,20 +1,51 @@
-# trivy evidence: NOT RUN in the authoring environment
+Trivy security validation evidence
 
-No trivy (or network) was available when this repository was authored, so no output is claimed here.
-Run these and paste the real output below, replacing this notice:
+Final status
 
-```
-scripts/scan-image.sh service:local
-```
+PASS
 
-## Output
 
-_(paste here)_
 
-## Accepted findings
+Trivy scanning was executed through GitHub Actions.
 
-None accepted at authoring time. If you accept one, add it to `.trivyignore` with reason/owner/expiry and record it here:
 
-| ID | Package | Severity | Why accepted | Owner | Expires |
-|---|---|---|---|---|---|
-| | | | | | |
+
+Initial finding
+
+After correcting the executable permission on scripts/scan-image.sh, the security scan executed successfully and detected:
+
+
+
+43 HIGH, 0 CRITICAL
+
+
+
+The findings originated from the original Debian 12 runtime image.
+
+
+
+The findings were not suppressed through .trivyignore.
+
+
+
+Remediation
+
+The build/runtime combination was updated to:
+
+
+
+Build: Python 3.13 slim image based on Debian 13.
+
+Runtime: Python 3.13 distroless image based on Debian 13.
+
+Final result
+
+The final successful GitHub Actions run reported:
+
+
+
+Total: 0 (HIGH: 0, CRITICAL: 0)
+
+
+
+No HIGH or CRITICAL findings were accepted or ignored.
