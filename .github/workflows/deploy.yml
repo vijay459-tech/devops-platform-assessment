@@ -71,7 +71,7 @@ jobs:
       IMAGE: ${{ inputs.image }}
       ALLOW_DESTRUCTIVE: ${{ inputs.allow_destructive }}
     steps:
-      - uses: actions/checkout@v4 # PIN
+      - uses: actions/checkout@v7 # PIN
         with:
           persist-credentials: false
 
@@ -152,7 +152,7 @@ jobs:
       IMAGE: ${{ inputs.image }}
       EXPECTED_PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
     steps:
-      - uses: actions/checkout@v4 # PIN
+      - uses: actions/checkout@v7 # PIN
         with:
           persist-credentials: false
 
