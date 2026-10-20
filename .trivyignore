@@ -1,0 +1,7 @@
+# Accepted findings. One CVE/AVD id per line, each with a justification, an
+# owner and an expiry date. CI and local scans both read this file.
+# Format:
+#   <ID>  # reason | owner | expires YYYY-MM-DD
+#
+# Currently empty: no findings have been accepted. Add entries only after the
+# finding is reviewed and recorded in docs/evidence/trivy.md.

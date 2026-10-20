@@ -1,0 +1,144 @@
+# CI: runs on every pull request, and is called by release.yml as the gate before a build is promoted.
+# Nothing here deploys or authenticates to GCP: PRs get no cloud access at all.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+# Least privilege: read-only token for every job unless a job opts in to more (none do here).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHON_VERSION: "3.11" # must match the runtime image (distroless python3-debian12 = 3.11)
+  TERRAFORM_VERSION: "1.9.8"
+
+jobs:
+  app:
+    name: App tests and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4 # PIN: replace tag with full commit SHA (docs/pipeline.md)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5 # PIN
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dev tooling (pinned)
+        run: pip install --no-cache-dir -r requirements-dev.txt
+      - name: Lint
+        run: |
+          ruff check app scripts tests
+      - name: Unit tests (service)
+        run: python -m unittest discover -s app/tests -t app -v
+      - name: Unit tests (pipeline scripts)
+        run: python -m unittest discover -s tests -v
+
+  terraform:
+    name: Terraform fmt, validate, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4 # PIN
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3 # PIN
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff terraform
+      - name: terraform init + validate (no backend, no credentials)
+        run: |
+          for dir in terraform/modules/cloud_run_service terraform/service; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+      - name: terraform test (mocked provider, no credentials)
+        run: terraform -chdir=terraform/modules/cloud_run_service test -verbose | tee "$RUNNER_TEMP/tf-test.txt"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### terraform test"
+            echo '```'
+            tail -n 40 "$RUNNER_TEMP/tf-test.txt" 2>/dev/null || echo "no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  container:
+    name: Build (no push), smoke test, scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4 # PIN
+        with:
+          persist-credentials: false
+      - name: Build image (not pushed)
+        run: docker build --build-arg GIT_SHA="$GITHUB_SHA" --tag service:ci .
+      - name: Verify non-root and exposed ports
+        run: |
+          user="$(docker inspect --format '{{.Config.User}}' service:ci)"
+          ports="$(docker inspect --format '{{json .Config.ExposedPorts}}' service:ci)"
+          echo "user=$user ports=$ports"
+          [[ -n "$user" && "$user" != "0" && "$user" != "root" && "$user" != "0:0" ]] || { echo "image runs as root"; exit 1; }
+          [[ "$ports" == '{"8080/tcp":{}}' ]] || { echo "unexpected exposed ports"; exit 1; }
+      - name: Smoke test the container
+        run: |
+          docker run -d --name svc -p 8080:8080 service:ci
+          for i in $(seq 1 20); do curl -fsS localhost:8080/health && break; sleep 1; done
+          curl -fsS localhost:8080/health
+          curl -fsS localhost:8080/ready
+          curl -fsS localhost:8080/version
+          docker stop --time 10 svc
+          [[ "$(docker inspect --format '{{.State.ExitCode}}' svc)" == "0" ]] || { echo "unclean shutdown on SIGTERM"; exit 1; }
+      - name: Trivy image + config/secret scan
+        run: scripts/scan-image.sh service:ci
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Trivy image scan"
+            echo '```'
+            tail -n 40 reports/trivy-image.txt 2>/dev/null || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4 # PIN
+        if: always()
+        with:
+          name: ci-scan-reports
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  policy:
+    name: Pipeline policy checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4 # PIN
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5 # PIN
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install --no-cache-dir -r requirements-dev.txt
+      - name: Workflow security/release-control policy
+        run: python scripts/validate_workflows.py
+      - name: Action pinning report (enforced when repo variable ACTION_PIN_ENFORCE=true)
+        env:
+          ACTION_PIN_ENFORCE: ${{ vars.ACTION_PIN_ENFORCE }}
+        run: python scripts/check_action_pins.py

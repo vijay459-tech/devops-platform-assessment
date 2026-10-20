@@ -1,0 +1,223 @@
+# Reusable deployment: PLAN (read-only identity) -> APPROVAL (GitHub environment) -> APPLY the saved plan.
+# Called by release.yml (dev, prod) and rollback.yml. It never builds: it only deploys a digest it is given.
+#
+# Identities (all keyless via OIDC + Workload Identity Federation; see docs/pipeline.md):
+#   <env>-plan  environment -> GCP_PLAN_SA   (read + state lock; cannot change infrastructure)
+#   <env>       environment -> GCP_APPLY_SA  (can change infrastructure; impersonable ONLY by jobs that
+#                                             passed that environment's protection rules)
+name: Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: dev or prod
+        type: string
+        required: true
+      image:
+        description: Digest-pinned image reference (registry/path@sha256:...)
+        type: string
+        required: true
+      allow_destructive:
+        description: Permit a plan that deletes or replaces resources (reviewed exception)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TERRAFORM_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  # Visible, honest no-op when GCP is not configured (e.g. a fork or an offline demo).
+  dry-run:
+    if: vars.ENABLE_GCP != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report what would be deployed
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          {
+            echo "### Dry run: ENABLE_GCP is not 'true'"
+            echo "Would plan, request approval (if the environment requires it) and apply:"
+            echo "- environment: \`$ENVIRONMENT\`"
+            echo "- image: \`$IMAGE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  plan:
+    name: Plan (${{ inputs.environment }})
+    if: vars.ENABLE_GCP == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}-plan # no required reviewers; holds the plan SA variables
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      plan_sha256: ${{ steps.plan.outputs.sha256 }}
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      IMAGE: ${{ inputs.image }}
+      ALLOW_DESTRUCTIVE: ${{ inputs.allow_destructive }}
+    steps:
+      - uses: actions/checkout@v4 # PIN
+        with:
+          persist-credentials: false
+
+      - name: Refuse anything that is not a digest-pinned image
+        run: |
+          [[ "$IMAGE" =~ ^[a-z0-9.-]+-docker\.pkg\.dev/[^@[:space:]]+@sha256:[a-f0-9]{64}$ ]] || { echo "image must be an Artifact Registry digest reference"; exit 1; }
+          [[ "$ENVIRONMENT" == "dev" || "$ENVIRONMENT" == "prod" ]] || { echo "bad environment"; exit 1; }
+
+      - uses: hashicorp/setup-terraform@v3 # PIN
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Authenticate to GCP (WIF, plan identity)
+        uses: google-github-actions/auth@v2 # PIN
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAN_SA }}
+
+      - name: terraform init (remote state)
+        working-directory: terraform/service
+        run: terraform init -backend-config="../env/${ENVIRONMENT}.backend.hcl"
+
+      - name: terraform plan (saved)
+        id: plan
+        working-directory: terraform/service
+        run: |
+          terraform plan -lock-timeout=5m -out=tfplan \
+            -var-file="../env/${ENVIRONMENT}.tfvars" -var "image=${IMAGE}"
+          terraform show -no-color tfplan > plan.txt
+          terraform show -json tfplan > plan.json
+          echo "sha256=$(sha256sum tfplan | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Destructive-change gate
+        working-directory: terraform/service
+        run: python3 ../../scripts/check_destructive_plan.py plan.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Plan summary for the approver
+        if: always()
+        working-directory: terraform/service
+        run: |
+          {
+            echo "### Plan for \`$ENVIRONMENT\`"
+            echo "- image: \`$IMAGE\`"
+            echo "- plan sha256: \`$(sha256sum tfplan 2>/dev/null | cut -d' ' -f1)\`"
+            echo "<details><summary>terraform plan output</summary>"
+            echo; echo '```'; head -c 60000 plan.txt 2>/dev/null; echo '```'; echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain the reviewed plan as release evidence
+        uses: actions/upload-artifact@v4 # PIN
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.sha }}
+          path: |
+            terraform/service/tfplan
+            terraform/service/plan.txt
+            terraform/service/plan.json
+          if-no-files-found: error
+          retention-days: 90
+
+  apply:
+    name: Apply (${{ inputs.environment }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Approval boundary: the `prod` environment is configured with required reviewers
+    # (prevent self-review, restricted to main). The job waits here until approved.
+    environment: ${{ inputs.environment }}
+    # Two applies to the same environment can never overlap, and a running apply is never cancelled.
+    concurrency:
+      group: terraform-apply-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      IMAGE: ${{ inputs.image }}
+      EXPECTED_PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
+    steps:
+      - uses: actions/checkout@v4 # PIN
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v3 # PIN
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Download the reviewed plan
+        uses: actions/download-artifact@v4 # PIN
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.sha }}
+          path: terraform/service
+
+      - name: Verify the plan is byte-identical to the one that was reviewed
+        working-directory: terraform/service
+        run: |
+          actual="$(sha256sum tfplan | cut -d' ' -f1)"
+          echo "expected=$EXPECTED_PLAN_SHA256 actual=$actual"
+          [[ -n "$EXPECTED_PLAN_SHA256" && "$actual" == "$EXPECTED_PLAN_SHA256" ]] || { echo "plan was modified after review"; exit 1; }
+
+      - name: Authenticate to GCP (WIF, apply identity)
+        uses: google-github-actions/auth@v2 # PIN
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_APPLY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2 # PIN
+
+      - name: terraform init (remote state)
+        working-directory: terraform/service
+        run: terraform init -backend-config="../env/${ENVIRONMENT}.backend.hcl"
+
+      # Applying a saved plan fails if state changed since planning (stale plan) - by design.
+      - name: terraform apply (saved plan only)
+        working-directory: terraform/service
+        run: terraform apply -lock-timeout=10m tfplan
+
+      - name: Verify the live revision runs the intended digest, record evidence
+        working-directory: terraform/service
+        run: |
+          project="$(terraform output -raw project_id)"
+          region="$(terraform output -raw region)"
+          service="$(terraform output -raw service_name)"
+          revision="$(terraform output -raw latest_ready_revision)"
+          live="$(gcloud run revisions describe "$revision" --project "$project" --region "$region" \
+                  --format='value(spec.containers[0].image)')"
+          echo "intended=$IMAGE"; echo "live=$live"
+          [[ "$live" == "$IMAGE" ]] || { echo "live image differs from intended digest"; exit 1; }
+          jq -n --arg env "$ENVIRONMENT" --arg service "$service" --arg revision "$revision" \
+                --arg image "$IMAGE" --arg commit "$GITHUB_SHA" --arg plan "$EXPECTED_PLAN_SHA256" \
+                --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+                --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                '{environment:$env,service:$service,revision:$revision,image:$image,commit:$commit,plan_sha256:$plan,workflow_run:$run,applied_at:$at}' \
+                > deployment-evidence.json
+          {
+            echo "### Deployed to \`$ENVIRONMENT\`"
+            echo "- service: \`$service\`  revision: \`$revision\`"
+            echo "- rollback target: previous revision / previous digest from its release manifest"
+            echo '```json'; cat deployment-evidence.json; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4 # PIN
+        with:
+          name: deployment-evidence-${{ inputs.environment }}-${{ github.sha }}
+          path: terraform/service/deployment-evidence.json
+          retention-days: 400

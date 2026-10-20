@@ -1,0 +1,122 @@
+# local validation 2026-10-19T05:31:53Z on Linux x86_64
+
+=== app unit tests ===
+$ bash -c cd app && python3 -m unittest discover -s tests -t . -v
+test_health_is_ok (tests.test_server.ServerTest.test_health_is_ok) ... ok
+test_health_stays_ok_while_draining (tests.test_server.ServerTest.test_health_stays_ok_while_draining) ... ok
+test_query_string_is_ignored_for_routing (tests.test_server.ServerTest.test_query_string_is_ignored_for_routing) ... ok
+test_ready_reflects_draining_state (tests.test_server.ServerTest.test_ready_reflects_draining_state) ... ok
+test_unknown_path_is_404 (tests.test_server.ServerTest.test_unknown_path_is_404) ... ok
+test_version_uses_build_metadata (tests.test_server.ServerTest.test_version_uses_build_metadata) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 3.053s
+
+OK
+
+=== pipeline script tests ===
+$ python3 -m unittest discover -s tests -v
+test_classification (test_check_action_pins.ClassifyTest.test_classification) ... ok
+test_actions (test_check_destructive_plan.ClassifyTest.test_actions) ... ok
+test_allows_destructive_with_explicit_flag (test_check_destructive_plan.MainTest.test_allows_destructive_with_explicit_flag) ... ok
+test_blocks_destructive_by_default (test_check_destructive_plan.MainTest.test_blocks_destructive_by_default) ... ok
+test_blocks_when_flag_is_not_exactly_true (test_check_destructive_plan.MainTest.test_blocks_when_flag_is_not_exactly_true) ... ok
+test_passes_safe_plan (test_check_destructive_plan.MainTest.test_passes_safe_plan) ... ok
+test_replace_and_delete_are_flagged (test_check_destructive_plan.SummarizeTest.test_replace_and_delete_are_flagged) ... ok
+test_safe_plan_has_no_destructive_entries (test_check_destructive_plan.SummarizeTest.test_safe_plan_has_no_destructive_entries) ... ok
+test_apply_must_use_saved_plan (test_validate_workflows.DeployControlsTest.test_apply_must_use_saved_plan) ... ok
+test_cancel_in_progress_true_fails (test_validate_workflows.DeployControlsTest.test_cancel_in_progress_true_fails) ... ok
+test_global_concurrency_group_fails (test_validate_workflows.DeployControlsTest.test_global_concurrency_group_fails) ... ok
+test_good_deploy_passes (test_validate_workflows.DeployControlsTest.test_good_deploy_passes) ... ok
+test_missing_concurrency_fails (test_validate_workflows.DeployControlsTest.test_missing_concurrency_fails) ... ok
+test_missing_environment_fails (test_validate_workflows.DeployControlsTest.test_missing_environment_fails) ... ok
+test_plan_and_apply_must_be_separate (test_validate_workflows.DeployControlsTest.test_plan_and_apply_must_be_separate) ... ok
+test_plan_must_be_retained (test_validate_workflows.DeployControlsTest.test_plan_must_be_retained) ... ok
+test_actual_repo_workflows_satisfy_policy (test_validate_workflows.RepoWorkflowsTest.test_actual_repo_workflows_satisfy_policy) ... ok
+test_checkout_must_not_persist_credentials (test_validate_workflows.WorkflowPolicyTest.test_checkout_must_not_persist_credentials) ... ok
+test_gcp_auth_requires_wif_and_id_token (test_validate_workflows.WorkflowPolicyTest.test_gcp_auth_requires_wif_and_id_token) ... ok
+test_good_workflow_passes (test_validate_workflows.WorkflowPolicyTest.test_good_workflow_passes) ... ok
+test_missing_permissions_fails (test_validate_workflows.WorkflowPolicyTest.test_missing_permissions_fails) ... ok
+test_pull_request_target_fails (test_validate_workflows.WorkflowPolicyTest.test_pull_request_target_fails) ... ok
+test_script_injection_pattern_fails (test_validate_workflows.WorkflowPolicyTest.test_script_injection_pattern_fails) ... ok
+test_service_account_key_fails (test_validate_workflows.WorkflowPolicyTest.test_service_account_key_fails) ... ok
+test_workflow_wide_write_fails (test_validate_workflows.WorkflowPolicyTest.test_workflow_wide_write_fails) ... ok
+test_write_all_string_fails (test_validate_workflows.WorkflowPolicyTest.test_write_all_string_fails) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 0.027s
+
+OK
+
+=== workflow policy check ===
+$ python3 scripts/validate_workflows.py
+[ok] ci.yml
+[ok] deploy.yml
+[ok] release.yml
+[ok] rollback.yml
+
+4 workflow(s) checked, 0 violation(s)
+
+=== action pinning report ===
+$ python3 scripts/check_action_pins.py
+tag       ci.yml:32 actions/checkout@v4
+::warning file=.github/workflows/ci.yml,line=32::actions/checkout@v4 is not pinned to a commit SHA
+tag       ci.yml:35 actions/setup-python@v5
+::warning file=.github/workflows/ci.yml,line=35::actions/setup-python@v5 is not pinned to a commit SHA
+tag       ci.yml:53 actions/checkout@v4
+::warning file=.github/workflows/ci.yml,line=53::actions/checkout@v4 is not pinned to a commit SHA
+tag       ci.yml:56 hashicorp/setup-terraform@v3
+::warning file=.github/workflows/ci.yml,line=56::hashicorp/setup-terraform@v3 is not pinned to a commit SHA
+tag       ci.yml:87 actions/checkout@v4
+::warning file=.github/workflows/ci.yml,line=87::actions/checkout@v4 is not pinned to a commit SHA
+tag       ci.yml:119 actions/upload-artifact@v4
+::warning file=.github/workflows/ci.yml,line=119::actions/upload-artifact@v4 is not pinned to a commit SHA
+tag       ci.yml:132 actions/checkout@v4
+::warning file=.github/workflows/ci.yml,line=132::actions/checkout@v4 is not pinned to a commit SHA
+tag       ci.yml:135 actions/setup-python@v5
+::warning file=.github/workflows/ci.yml,line=135::actions/setup-python@v5 is not pinned to a commit SHA
+tag       deploy.yml:74 actions/checkout@v4
+::warning file=.github/workflows/deploy.yml,line=74::actions/checkout@v4 is not pinned to a commit SHA
+tag       deploy.yml:83 hashicorp/setup-terraform@v3
+::warning file=.github/workflows/deploy.yml,line=83::hashicorp/setup-terraform@v3 is not pinned to a commit SHA
+tag       deploy.yml:89 google-github-actions/auth@v2
+::warning file=.github/workflows/deploy.yml,line=89::google-github-actions/auth@v2 is not pinned to a commit SHA
+tag       deploy.yml:125 actions/upload-artifact@v4
+::warning file=.github/workflows/deploy.yml,line=125::actions/upload-artifact@v4 is not pinned to a commit SHA
+tag       deploy.yml:155 actions/checkout@v4
+::warning file=.github/workflows/deploy.yml,line=155::actions/checkout@v4 is not pinned to a commit SHA
+tag       deploy.yml:159 hashicorp/setup-terraform@v3
+::warning file=.github/workflows/deploy.yml,line=159::hashicorp/setup-terraform@v3 is not pinned to a commit SHA
+tag       deploy.yml:165 actions/download-artifact@v4
+::warning file=.github/workflows/deploy.yml,line=165::actions/download-artifact@v4 is not pinned to a commit SHA
+tag       deploy.yml:178 google-github-actions/auth@v2
+::warning file=.github/workflows/deploy.yml,line=178::google-github-actions/auth@v2 is not pinned to a commit SHA
+tag       deploy.yml:184 google-github-actions/setup-gcloud@v2
+::warning file=.github/workflows/deploy.yml,line=184::google-github-actions/setup-gcloud@v2 is not pinned to a commit SHA
+tag       deploy.yml:219 actions/upload-artifact@v4
+::warning file=.github/workflows/deploy.yml,line=219::actions/upload-artifact@v4 is not pinned to a commit SHA
+local     release.yml:27 ./.github/workflows/ci.yml
+tag       release.yml:46 actions/checkout@v4
+::warning file=.github/workflows/release.yml,line=46::actions/checkout@v4 is not pinned to a commit SHA
+tag       release.yml:64 google-github-actions/auth@v2
+::warning file=.github/workflows/release.yml,line=64::google-github-actions/auth@v2 is not pinned to a commit SHA
+tag       release.yml:70 google-github-actions/setup-gcloud@v2
+::warning file=.github/workflows/release.yml,line=70::google-github-actions/setup-gcloud@v2 is not pinned to a commit SHA
+tag       release.yml:109 actions/upload-artifact@v4
+::warning file=.github/workflows/release.yml,line=109::actions/upload-artifact@v4 is not pinned to a commit SHA
+local     release.yml:121 ./.github/workflows/deploy.yml
+local     release.yml:134 ./.github/workflows/deploy.yml
+local     rollback.yml:69 ./.github/workflows/deploy.yml
+
+26 reference(s); 22 not SHA-pinned; enforcement=off (report only)
+=== SKIP ruff lint: ruff not installed ===
+=== SKIP terraform fmt/validate/test: terraform not installed ===
+=== SKIP docker build / smoke / trivy: docker not installed ===
+PASS  app unit tests
+PASS  pipeline script tests
+PASS  workflow policy check
+PASS  action pinning report
+SKIP  ruff lint (ruff not installed)
+SKIP  terraform fmt/validate/test (terraform not installed)
+SKIP  docker build / smoke / trivy (docker not installed)
+PASS=4 FAIL=0 SKIP=3 (details: docs/evidence/local-validation.log)

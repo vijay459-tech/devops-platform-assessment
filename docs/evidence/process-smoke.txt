@@ -1,0 +1,14 @@
+# Real output of: PORT=18080 GIT_SHA=localtest APP_VERSION=0.1.0 python3 -m service.server  (host process, NOT the container)
+GET /health -> {"status": "ok"} [HTTP 200]
+GET /ready -> {"status": "ready"} [HTTP 200]
+GET /version -> {"version": "0.1.0", "commit": "localtest", "build_time": "unknown"} [HTTP 200]
+GET /nope -> {"error": "not found"} [HTTP 404]
+exit code after SIGTERM: 0
+--- stdout log ---
+{"severity": "INFO", "message": "listening on port 18080", "logger": "service"}
+{"severity": "INFO", "message": "127.0.0.1 \"GET /health HTTP/1.1\" 200 -", "logger": "service"}
+{"severity": "INFO", "message": "127.0.0.1 \"GET /ready HTTP/1.1\" 200 -", "logger": "service"}
+{"severity": "INFO", "message": "127.0.0.1 \"GET /version HTTP/1.1\" 200 -", "logger": "service"}
+{"severity": "INFO", "message": "127.0.0.1 \"GET /nope HTTP/1.1\" 404 -", "logger": "service"}
+{"severity": "INFO", "message": "signal 15 received; draining", "logger": "service"}
+{"severity": "INFO", "message": "stopped", "logger": "service"}

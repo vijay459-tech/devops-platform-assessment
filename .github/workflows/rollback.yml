@@ -1,0 +1,73 @@
+# Governed rollback: re-deploys a previously released digest through the SAME
+# plan -> approval -> apply path (and the same per-environment concurrency lock).
+# Find the target digest in a past release-manifest artifact or deployment-evidence artifact,
+# or via `scripts/rollback.sh list ...`. For the first few minutes of an incident, the emergency
+# traffic shift in scripts/rollback.sh is faster; run this afterwards to reconcile Terraform.
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        type: choice
+        options: [dev, prod]
+        required: true
+      image:
+        description: Known-good digest reference (registry/path@sha256:...)
+        type: string
+        required: true
+      reason:
+        description: Why (incident/ticket id). Recorded in the run summary.
+        type: string
+        required: true
+      allow_destructive:
+        description: Permit a plan that deletes or replaces resources
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rollback-${{ inputs.environment }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    name: Validate and record request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Validate input and record who/why
+        env:
+          IMAGE: ${{ inputs.image }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          [[ "$IMAGE" =~ ^[a-z0-9.-]+-docker\.pkg\.dev/[^@[:space:]]+@sha256:[a-f0-9]{64}$ ]] \
+            || { echo "image must be an Artifact Registry digest reference"; exit 1; }
+          {
+            echo "### Rollback requested"
+            echo "- environment: \`$ENVIRONMENT\`"
+            echo "- target image: \`$IMAGE\`"
+            echo "- requested by: \`$GITHUB_ACTOR\`"
+            echo "- reason: $REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rollback:
+    name: Roll back via governed deploy
+    needs: validate
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image: ${{ inputs.image }}
+      allow_destructive: ${{ inputs.allow_destructive }}

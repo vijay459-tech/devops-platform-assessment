@@ -1,0 +1,137 @@
+# Release: runs after merge to main.
+#   ci -> build ONCE (scan, push, record digest) -> deploy dev -> deploy prod (approval).
+# Dev and prod receive the *same digest*; nothing is rebuilt per environment.
+#
+# GCP interaction is gated by the repository variable ENABLE_GCP=true. Without it the workflow
+# still builds, scans and records a manifest, and the deploy workflow reports a dry run.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One release pipeline at a time per branch; never cancel one mid-flight (a half-promoted release is worse).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    name: Build once, scan, push, record digest
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Workload Identity Federation only; no write to the repo
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+      digest: ${{ steps.resolve.outputs.digest }}
+    env:
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      IMAGE_REPO: ${{ vars.GCP_REGION || 'us-central1' }}-docker.pkg.dev/${{ vars.GCP_ARTIFACT_PROJECT || 'example-artifacts-project' }}/${{ vars.GAR_REPOSITORY || 'apps' }}/${{ vars.SERVICE_NAME || 'demo-api' }}
+    steps:
+      - uses: actions/checkout@v4 # PIN
+        with:
+          persist-credentials: false
+
+      - name: Build (the one and only build of this commit)
+        run: |
+          docker build \
+            --build-arg GIT_SHA="$GITHUB_SHA" \
+            --build-arg APP_VERSION="0.1.0+${GITHUB_SHA::7}" \
+            --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --tag "$IMAGE_REPO:sha-$GITHUB_SHA" .
+
+      - name: Scan the exact image that will be pushed (gate)
+        run: scripts/scan-image.sh "$IMAGE_REPO:sha-$GITHUB_SHA"
+
+      # --- Keyless GitHub -> GCP auth (OIDC + Workload Identity Federation). No JSON keys anywhere. ---
+      - name: Authenticate to GCP (WIF)
+        if: vars.ENABLE_GCP == 'true'
+        uses: google-github-actions/auth@v2 # PIN
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }} # projects/NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
+          service_account: ${{ vars.GCP_PUSH_SA }} # can only write to Artifact Registry
+      - name: Set up gcloud
+        if: vars.ENABLE_GCP == 'true'
+        uses: google-github-actions/setup-gcloud@v2 # PIN
+      - name: Push the scanned image
+        if: vars.ENABLE_GCP == 'true'
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE_REPO:sha-$GITHUB_SHA"
+
+      - name: Resolve immutable identity (digest) and write release manifest
+        id: resolve
+        env:
+          ENABLE_GCP: ${{ vars.ENABLE_GCP }}
+        run: |
+          ref="$IMAGE_REPO:sha-$GITHUB_SHA"
+          if [[ "$ENABLE_GCP" == "true" ]]; then
+            digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$ref" | cut -d@ -f2)"
+            pushed=true
+          else
+            # Dry run: nothing was pushed, so use the local image ID as a stand-in (same sha256 shape).
+            digest="$(docker inspect --format '{{.Id}}' "$ref")"
+            pushed=false
+          fi
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "bad digest: $digest"; exit 1; }
+          echo "image=$IMAGE_REPO@$digest" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          jq -n \
+            --arg commit "$GITHUB_SHA" --arg image "$IMAGE_REPO@$digest" --arg digest "$digest" \
+            --arg tag "sha-$GITHUB_SHA" --argjson pushed "$pushed" \
+            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg actor "$GITHUB_ACTOR" --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{commit:$commit,image:$image,digest:$digest,tag:$tag,pushed:$pushed,workflow_run:$run,actor:$actor,built_at:$built_at}' \
+            > release-manifest.json
+          {
+            echo "### Release artifact"
+            echo "- commit: \`$GITHUB_SHA\`"
+            echo "- image: \`$IMAGE_REPO@$digest\`"
+            echo "- pushed to registry: **$pushed**"
+            echo '```json'; cat release-manifest.json; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4 # PIN
+        with:
+          name: release-manifest-${{ github.sha }}
+          path: release-manifest.json
+          retention-days: 400 # rollback targets must outlive normal artifact retention
+
+  deploy-dev:
+    name: Deploy to dev
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: dev
+      image: ${{ needs.build.outputs.image }}
+
+  deploy-prod:
+    name: Promote same digest to prod
+    needs: [build, deploy-dev]
+    # Incident control: set repo variable DEPLOY_FREEZE=true to stop promotions. Rollback is unaffected.
+    if: vars.DEPLOY_FREEZE != 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: prod
+      image: ${{ needs.build.outputs.image }}
