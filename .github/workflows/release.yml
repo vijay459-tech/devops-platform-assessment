@@ -106,7 +106,7 @@ jobs:
             echo '```json'; cat release-manifest.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4 # PIN
+      - uses: actions/upload-artifact@v7 # PIN
         with:
           name: release-manifest-${{ github.sha }}
           path: release-manifest.json

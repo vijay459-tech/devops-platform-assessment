@@ -116,7 +116,7 @@ jobs:
             tail -n 40 reports/trivy-image.txt 2>/dev/null || echo "no report"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4 # PIN
+      - uses: actions/upload-artifact@v7 # PIN
         if: always()
         with:
           name: ci-scan-reports
