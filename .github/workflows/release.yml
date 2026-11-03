@@ -43,7 +43,7 @@ jobs:
       GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
       IMAGE_REPO: ${{ vars.GCP_REGION || 'us-central1' }}-docker.pkg.dev/${{ vars.GCP_ARTIFACT_PROJECT || 'example-artifacts-project' }}/${{ vars.GAR_REPOSITORY || 'apps' }}/${{ vars.SERVICE_NAME || 'demo-api' }}
     steps:
-      - uses: actions/checkout@v4 # PIN
+      - uses: actions/checkout@v7 # PIN
         with:
           persist-credentials: false
 
