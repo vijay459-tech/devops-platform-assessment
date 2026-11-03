@@ -122,7 +122,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain the reviewed plan as release evidence
-        uses: actions/upload-artifact@v4 # PIN
+        uses: actions/upload-artifact@v7 # PIN
         with:
           name: tfplan-${{ inputs.environment }}-${{ github.sha }}
           path: |
@@ -216,7 +216,7 @@ jobs:
             echo '```json'; cat deployment-evidence.json; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4 # PIN
+      - uses: actions/upload-artifact@v7 # PIN
         with:
           name: deployment-evidence-${{ inputs.environment }}-${{ github.sha }}
           path: terraform/service/deployment-evidence.json
