@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4 # PIN: replace tag with full commit SHA (docs/pipeline.md)
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5 # PIN
+      - uses: actions/setup-python@v7 # PIN
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install dev tooling (pinned)
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@v4 # PIN
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5 # PIN
+      - uses: actions/setup-python@v7 # PIN
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install --no-cache-dir -r requirements-dev.txt
