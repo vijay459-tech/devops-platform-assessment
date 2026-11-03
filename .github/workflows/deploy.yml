@@ -80,7 +80,7 @@ jobs:
           [[ "$IMAGE" =~ ^[a-z0-9.-]+-docker\.pkg\.dev/[^@[:space:]]+@sha256:[a-f0-9]{64}$ ]] || { echo "image must be an Artifact Registry digest reference"; exit 1; }
           [[ "$ENVIRONMENT" == "dev" || "$ENVIRONMENT" == "prod" ]] || { echo "bad environment"; exit 1; }
 
-      - uses: hashicorp/setup-terraform@v3 # PIN
+      - uses: hashicorp/setup-terraform@v4 # PIN
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
@@ -156,7 +156,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: hashicorp/setup-terraform@v3 # PIN
+      - uses: hashicorp/setup-terraform@v4 # PIN
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
